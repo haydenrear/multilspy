@@ -4,6 +4,7 @@ Defines wrapper objects around the types returned by LSP to ensure decoupling be
 
 from __future__ import annotations
 
+import typing
 from enum import IntEnum, Enum
 from typing_extensions import NotRequired, TypedDict, List, Dict, Union
 
@@ -168,6 +169,18 @@ class SymbolTag(IntEnum):
 
     Deprecated = 1
     """ Render a symbol as obsolete, usually using a strike-out. """
+
+class RelatedFullDocumentDiagnosticReport:
+    pass
+
+class RelatedUnchangedDocumentDiagnosticReport:
+    pass
+
+# /Users/hayde/IdeaProjects/commit-diff-context-parent/runner_code/src/main/docker/mcp-tool-gateway/multilspy/.venv/lib/python3.11/site-packages/lsprotocol/types.py
+DocumentDiagnosticReport = typing.Union[RelatedFullDocumentDiagnosticReport, RelatedUnchangedDocumentDiagnosticReport]
+
+class DocumentDiagnosticParams:
+    pass
 
 class UnifiedSymbolInformation(TypedDict):
     """Represents information about programming constructs like variables, classes,

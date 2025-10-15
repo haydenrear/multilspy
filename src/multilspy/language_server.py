@@ -13,6 +13,7 @@ import logging
 import os
 import pathlib
 import threading
+import typing
 from contextlib import asynccontextmanager, contextmanager
 from .lsp_protocol_handler.lsp_constants import LSPConstants
 from  .lsp_protocol_handler import lsp_types as LSPTypes
@@ -686,6 +687,21 @@ class LanguageServer:
 
         return ret
 
+    async def request_diagnostics(self, query: multilspy_types.DocumentDiagnosticParams) -> Union[List[multilspy_types.UnifiedSymbolInformation], None]:
+        """
+        Raise a [workspace/symbol](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#workspace_symbol) request to the Language Server
+        to find symbols across the whole workspace. Wait for the response and return the result.
+
+        :param query: The query string to filter symbols by
+
+        :return Union[List[multilspy_types.UnifiedSymbolInformation], None]: A list of matching symbols
+        """
+        response = await self.server.send.workspace_diagnostic(None)
+        if response is None:
+            return None
+        raise NotImplementedError("")
+
+
 @ensure_all_methods_implemented(LanguageServer)
 class SyncLanguageServer:
     """
@@ -870,3 +886,12 @@ class SyncLanguageServer:
             self.language_server.request_workspace_symbol(query), self.loop
         ).result(timeout=self.timeout)
         return result
+
+    def request_diagnostics(self, query: multilspy_types.DocumentDiagnosticParams) -> typing.Optional[multilspy_types.DocumentDiagnosticReport]:
+        """
+        """
+        result = asyncio.run_coroutine_threadsafe(
+            self.language_server.request_diagnostics(query), self.loop
+        ).result(timeout=self.timeout)
+        return result
+
