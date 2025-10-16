@@ -190,8 +190,8 @@ class LanguageServerHandler:
             logger: An optional function that takes two strings (source and destination) and
                 a payload dictionary, and logs the communication between the client and the server.
         """
-        self.send = LspRequest(self.send_request)
-        self.notify = LspNotification(self.send_notification)
+        self.send: LspRequest = LspRequest(self.send_request)
+        self.notify: LspNotification = LspNotification(self.send_notification)
 
         self.process_launch_info = process_launch_info
         self.process = None
