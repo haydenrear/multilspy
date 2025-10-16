@@ -6,7 +6,7 @@ authors = [
 ]
 description = "A language-agnostic LSP client in Python, with a library interface. Intended to be used to build applications around language servers. Currently multilspy supports language servers for Python, Rust, Java, Go, JavaScript, Ruby, C# and Dart. Originally appeared as part of Monitor-Guided Decoding (https://github.com/microsoft/monitors4codegen)"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.11"
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
@@ -27,7 +27,8 @@ dependencies = [
     "requests==2.32.3",
     "typing-extensions>=4.2.0",
     "psutil (>=7.0.0,<8.0.0)",
-    "setuptools==68.0.0"
+    "setuptools==68.0.0",
+    "fastmcp>=0.1.0"
 ]
 
 [project.urls]
