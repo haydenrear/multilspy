@@ -1,0 +1,66 @@
+# LSP Configuration Example for multilspy MCP
+#
+# Copy this file to your workspace root as "lsp.toml" and customize it for your project.
+# The MCPRunner will automatically discover and load this configuration on startup.
+
+[lsp]
+# List of language servers to start (e.g., ["java", "python", "rust"])
+# Supported languages: java, python, rust, csharp, typescript, javascript, go, ruby, dart, cpp, kotlin
+language_servers = ["java"]
+
+# Java language server configuration
+[lsp.java]
+# List of Java project roots (workspace directories)
+# Each root is a directory containing Java source code or a Maven/Gradle project
+roots = ["/path/to/java/project"]
+
+# Java version (optional, defaults to system default)
+# java_version = "17"
+
+# Gradle version (optional, defaults to 7.3.3)
+# gradle_version = "7.3.3"
+
+
+# Python language server configuration (optional)
+# [lsp.python]
+# roots = ["/path/to/python/project"]
+
+
+# Rust language server configuration (optional)
+# [lsp.rust]
+# roots = ["/path/to/rust/project"]
+
+
+# TypeScript/JavaScript configuration (optional)
+# [lsp.typescript]
+# roots = ["/path/to/ts/project"]
+
+
+# Go configuration (optional)
+# [lsp.go]
+# roots = ["/path/to/go/project"]
+
+
+# C# configuration (optional)
+# [lsp.csharp]
+# roots = ["/path/to/csharp/project"]
+
+
+# Kotlin configuration (optional)
+# [lsp.kotlin]
+# roots = ["/path/to/kotlin/project"]
+
+
+# Ruby configuration (optional)
+# [lsp.ruby]
+# roots = ["/path/to/ruby/project"]
+
+
+# Dart configuration (optional)
+# [lsp.dart]
+# roots = ["/path/to/dart/project"]
+
+
+# C++ configuration (optional)
+# [lsp.cpp]
+# roots = ["/path/to/cpp/project"]
