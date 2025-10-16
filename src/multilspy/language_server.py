@@ -879,15 +879,15 @@ class SyncLanguageServer:
         ).result(timeout=self.timeout)
         return result
 
-    def request_diagnostics(self, query: lsp_types.DocumentDiagnosticParams) -> lsp_types.DocumentDiagnosticReport:
+    def request_text_document_diagnostics(self, text_document: lsp_types.DocumentDiagnosticParams) -> lsp_types.DocumentDiagnosticReport:
         """
         """
         result = asyncio.run_coroutine_threadsafe(
-            self.language_server.request_text_document_diagnostics(query), self.loop
+            self.language_server.request_text_document_diagnostics(text_document), self.loop
         ).result(timeout=self.timeout)
         return result
 
-    def request_workspace_diagnostics(self, query: lsp_types.WorkspaceDiagnosticParams) -> "lsp_types.WorkspaceDiagnosticReport":
+    def request_workspace_document_diagnostics(self, query: lsp_types.WorkspaceDiagnosticParams) -> "lsp_types.WorkspaceDiagnosticReport":
         """
         """
         result = asyncio.run_coroutine_threadsafe(

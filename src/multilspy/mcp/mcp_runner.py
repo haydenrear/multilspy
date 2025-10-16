@@ -11,6 +11,7 @@ Key improvements:
 2. Derives schemas from LSP protocol types rather than manually creating them
 3. Initializes language servers at startup once, keeps them running
 4. Intercepts and validates lsp.toml configuration at initialization
+5. Each tool checks for configuration at call time as fallback
 """
 
 import asyncio
@@ -198,21 +199,32 @@ class MCPRunner:
     - Loading and validating lsp.toml configuration at initialization
     - Initializing language servers at startup (once, not per-request)
     - Managing language server lifecycle
-    - Providing tool definitions for MCP clients via fastmcp framework
+    - Per-tool fallback configuration checking
 
     Key design improvements:
     1. Uses fastmcp Server for standardized MCP tool management
     2. Starts language servers once during __init__ and keeps them running
     3. Derives tool schemas from LSP protocol types
     4. Validates configuration at startup
+    5. Each tool checks for configuration at call time and loads if available
+
+    Workflow:
+    - If lsp.toml exists at startup: config is loaded, servers start immediately
+    - If lsp.toml missing at startup: servers stay null, all tools check for config at call time
+    - If user creates lsp.toml and calls tool: tool detects config, loads it, starts servers, executes
 
     Example usage:
     ```python
+    # Case 1: With existing lsp.toml
     runner = MCPRunner("/path/to/workspace")
-    # Language servers are automatically started during __init__
     server = runner.create_mcp_server()
-    # Use server with fastmcp
-    # When done, call runner.stop_language_servers()
+    # All tools work immediately
+
+    # Case 2: Without lsp.toml (workflow with user)
+    runner = MCPRunner("/path/to/workspace")
+    server = runner.create_mcp_server()
+    # User creates lsp.toml
+    # User calls tool -> tool checks, loads config, starts servers, executes
     ```
     """
 
@@ -220,13 +232,11 @@ class MCPRunner:
         """
         Initialize the MCP runner.
 
-        Loads configuration from lsp.toml and starts all configured language servers once.
+        If lsp.toml exists, loads it and starts language servers.
+        If lsp.toml doesn't exist, defers loading until tool is called.
 
         Args:
             workspace_root: Root directory of the workspace. If None, uses current directory.
-
-        Raises:
-            LSPNotConfiguredException: If lsp.toml is not found or invalid
         """
         self.workspace_root = workspace_root or os.getcwd()
         self.logger = MultilspyLogger()
@@ -234,24 +244,24 @@ class MCPRunner:
         self.language_servers: Dict[Language, SyncLanguageServer] = {}
         self._server_contexts: Dict[Language, Any] = {}
 
-        # Load and validate configuration at initialization
-        self._load_and_validate_config()
+        # Try to load configuration at initialization if it exists
+        self._try_load_config()
 
-        # Start language servers at initialization (once, and keep them running)
+        # Start language servers if config is available
         if self.config is not None:
             self._start_language_servers_internal()
 
-    def _load_and_validate_config(self) -> None:
+    def _try_load_config(self) -> None:
         """
-        Load and validate lsp.toml configuration at startup.
+        Attempt to load lsp.toml configuration, but don't fail if missing.
 
-        Raises:
-            LSPNotConfiguredException: If configuration is missing or invalid
+        This allows the runner to work even without configuration, deferring
+        the error until a tool is called.
         """
         lsp_toml_path = os.path.join(self.workspace_root, "lsp.toml")
 
         if not os.path.exists(lsp_toml_path):
-            raise LSPNotConfiguredException(self.get_configuration_error_message())
+            return
 
         try:
             with open(lsp_toml_path, "rb") as f:
@@ -261,16 +271,51 @@ class MCPRunner:
                 f"Loaded LSP configuration with servers: {[s.value for s in self.config.language_servers]}",
                 logging.INFO,
             )
-        except LSPNotConfiguredException:
-            raise
         except Exception as e:
             self.logger.log(
                 f"Failed to load lsp.toml from {lsp_toml_path}: {str(e)}", logging.ERROR
             )
-            raise LSPNotConfiguredException(
-                f"Failed to load lsp.toml: {str(e)}\n\n"
-                f"Expected schema:\n\n{LSP_TOML_SCHEMA}"
+            # Don't raise - let tools check at call time
+
+    def _ensure_configured(self) -> bool:
+        """
+        Check if configuration needs to be loaded at tool call time.
+
+        If config is already loaded, returns True.
+        If config wasn't loaded but file now exists, loads it and starts servers.
+        If config still doesn't exist, returns False.
+
+        Returns:
+            True if configured (either already or just loaded), False if still not configured
+        """
+        if self.config is not None:
+            # Already configured
+            return True
+
+        lsp_toml_path = os.path.join(self.workspace_root, "lsp.toml")
+
+        if not os.path.exists(lsp_toml_path):
+            # Still no config file
+            return False
+
+        # File exists now, try to load it
+        try:
+            with open(lsp_toml_path, "rb") as f:
+                toml_dict = tomllib.load(f)
+            self.config = LSPConfig.from_dict(toml_dict)
+            self.logger.log(
+                f"Loaded LSP configuration with servers: {[s.value for s in self.config.language_servers]}",
+                logging.INFO,
             )
+
+            # Start language servers now that config is loaded
+            self._start_language_servers_internal()
+            return True
+        except Exception as e:
+            self.logger.log(
+                f"Failed to load lsp.toml from {lsp_toml_path}: {str(e)}", logging.ERROR
+            )
+            return False
 
     def _start_language_servers_internal(self) -> None:
         """
@@ -286,11 +331,13 @@ class MCPRunner:
             return
 
         for language, server_config in self.config.servers.items():
+            # Skip if already started
+            if language in self.language_servers:
+                continue
 
             # Use the first root as the primary project root
-            roots: list[str] = server_config.roots
+            project_root = server_config.roots[0]
 
-            project_root = roots[0]
             try:
                 multilspy_config = MultilspyConfig.from_dict(
                     {"code_language": language.value}
@@ -377,30 +424,22 @@ class MCPRunner:
         Returns:
             Configured fastmcp Server ready to serve MCP tools
 
-        Raises:
-            LSPNotConfiguredException: If language servers are not configured
+        Note: Each tool includes fallback configuration checking.
         """
-        if self.config is None:
-            raise LSPNotConfiguredException(self.get_configuration_error_message())
-
         server = Server("multilspy-mcp")
-
-        # Register all LSP tools using fastmcp
         self._register_tools(server)
-
         return server
 
     def _register_tools(self, server: Server) -> None:
         """
         Register all LSP tools with the fastmcp server.
 
-        Tools are registered with schemas derived from LSP protocol types.
-        Language servers are already running and reused across calls.
+        Each tool includes a fallback check for configuration at call time.
+        Language servers are started once and reused across calls.
 
         Args:
             server: The fastmcp Server instance
         """
-        available_languages = [lang.value for lang in self.config.language_servers]
 
         # Tool: lsp_get_diagnostics
         @server.call_tool()
@@ -413,6 +452,14 @@ class MCPRunner:
                 language: Programming language (e.g., 'java', 'python')
                 file_path: Optional path to specific file
             """
+            if not self._ensure_configured():
+                return json.dumps(
+                    {
+                        "status": "error",
+                        "message": self.get_configuration_error_message(),
+                    }
+                )
+
             try:
                 lang = Language(language)
             except (ValueError, KeyError):
@@ -423,9 +470,9 @@ class MCPRunner:
             try:
                 if file_path:
                     lsp.open_file(file_path)
-                    result = lsp.request_diagnostics(lsp_types.DocumentDiagnosticParams(textDocument=TextDocumentIdentifier(uri=file_path)))
+                    result = lsp.request_text_document_diagnostics(lsp_types.DocumentDiagnosticParams(textDocument=TextDocumentIdentifier(uri=file_path)))
                 else:
-                    result = lsp.request_workspace_diagnostics(lsp_types.WorkspaceDiagnosticParams(previousResultIds=[]))
+                    result = lsp.request_workspace_document_diagnostics(lsp_types.WorkspaceDiagnosticParams(previousResultIds=[]))
 
                 return json.dumps({"status": "success", "diagnostics": result or []})
             except Exception as e:
@@ -444,6 +491,14 @@ class MCPRunner:
                 line: Line number (0-indexed)
                 character: Character position (0-indexed)
             """
+            if not self._ensure_configured():
+                return json.dumps(
+                    {
+                        "status": "error",
+                        "message": self.get_configuration_error_message(),
+                    }
+                )
+
             try:
                 lang = Language(language)
             except (ValueError, KeyError):
@@ -472,6 +527,14 @@ class MCPRunner:
                 line: Line number (0-indexed)
                 character: Character position (0-indexed)
             """
+            if not self._ensure_configured():
+                return json.dumps(
+                    {
+                        "status": "error",
+                        "message": self.get_configuration_error_message(),
+                    }
+                )
+
             try:
                 lang = Language(language)
             except (ValueError, KeyError):
@@ -500,6 +563,14 @@ class MCPRunner:
                 line: Line number (0-indexed)
                 character: Character position (0-indexed)
             """
+            if not self._ensure_configured():
+                return json.dumps(
+                    {
+                        "status": "error",
+                        "message": self.get_configuration_error_message(),
+                    }
+                )
+
             try:
                 lang = Language(language)
             except (ValueError, KeyError):
@@ -528,6 +599,14 @@ class MCPRunner:
                 line: Line number (0-indexed)
                 character: Character position (0-indexed)
             """
+            if not self._ensure_configured():
+                return json.dumps(
+                    {
+                        "status": "error",
+                        "message": self.get_configuration_error_message(),
+                    }
+                )
+
             try:
                 lang = Language(language)
             except (ValueError, KeyError):
@@ -552,6 +631,14 @@ class MCPRunner:
                 language: Programming language
                 file_path: Path to the file
             """
+            if not self._ensure_configured():
+                return json.dumps(
+                    {
+                        "status": "error",
+                        "message": self.get_configuration_error_message(),
+                    }
+                )
+
             try:
                 lang = Language(language)
             except (ValueError, KeyError):
@@ -576,6 +663,14 @@ class MCPRunner:
                 language: Programming language
                 query: Symbol name or pattern to search for
             """
+            if not self._ensure_configured():
+                return json.dumps(
+                    {
+                        "status": "error",
+                        "message": self.get_configuration_error_message(),
+                    }
+                )
+
             try:
                 lang = Language(language)
             except (ValueError, KeyError):
