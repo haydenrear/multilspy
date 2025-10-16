@@ -335,7 +335,10 @@ class MCPRunner:
             if language in self.language_servers:
                 continue
 
-            # Use the first root as the primary project root
+            if len(server_config.roots) == 0:
+                self.logger.log(f"Found server config for {language} that had no roots. No default provided.", logging.INFO)
+                continue
+
             project_root = server_config.roots[0]
 
             try:
