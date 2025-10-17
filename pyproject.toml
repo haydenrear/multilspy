@@ -28,7 +28,9 @@ dependencies = [
     "typing-extensions>=4.2.0",
     "psutil (>=7.0.0,<8.0.0)",
     "setuptools==68.0.0",
-    "fastmcp>=0.1.0"
+    "fastmcp>=0.1.0",
+    "pytest==8.4.2",
+    "pytest-asyncio==0.26.0"
 ]
 
 [project.urls]

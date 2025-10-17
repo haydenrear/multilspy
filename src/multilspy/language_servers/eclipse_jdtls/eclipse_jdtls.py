@@ -46,12 +46,62 @@ class EclipseJDTLS(LanguageServer):
     The EclipseJDTLS class provides a Java specific implementation of the LanguageServer class
     """
 
-    def __init__(self, config: MultilspyConfig, logger: MultilspyLogger, repository_root_path: str):
+    @staticmethod
+    def _resolve_jdk_download_url(
+        runtime_dependencies: dict, jdk_version: str, platform_id: str
+    ) -> str:
+        """
+        Resolve the download URL for a specific JDK version and platform.
+
+        Args:
+            runtime_dependencies: The loaded runtime_dependencies.json
+            jdk_version: The JDK version string (e.g., "17", "21")
+            platform_id: The platform identifier (e.g., "linux-x64", "osx-x64")
+
+        Returns:
+            The download URL for the specified JDK version and platform
+
+        Raises:
+            KeyError: If the version or platform is not available
+        """
+        return runtime_dependencies["jdk_versions"][jdk_version][platform_id]
+
+    @staticmethod
+    def _resolve_gradle_download_url(
+        runtime_dependencies: dict, gradle_version: str
+    ) -> tuple:
+        """
+        Resolve the download URL and metadata for a specific Gradle version.
+
+        Args:
+            runtime_dependencies: The loaded runtime_dependencies.json
+            gradle_version: The Gradle version string (e.g., "7.3.3", "8.5")
+
+        Returns:
+            Tuple of (url, archiveType, relative_extraction_path)
+
+        Raises:
+            KeyError: If the version is not available
+        """
+        gradle_config = runtime_dependencies["gradle_versions"][gradle_version]
+        return (
+            gradle_config["url"],
+            gradle_config["archiveType"],
+            gradle_config["relative_extraction_path"],
+        )
+
+    def __init__(
+        self,
+        config: MultilspyConfig,
+        logger: MultilspyLogger,
+        repository_root_path: str,
+    ):
         """
         Creates a new EclipseJDTLS instance initializing the language server settings appropriately.
         This class is not meant to be instantiated directly. Use LanguageServer.create() instead.
         """
 
+        self.config = config
         runtime_dependency_paths = self.setupRuntimeDependencies(logger, config)
         self.runtime_dependency_paths = runtime_dependency_paths
 
@@ -67,7 +117,12 @@ class EclipseJDTLS(LanguageServer):
 
         # shared_cache_location is the global cache used by Eclipse JDTLS across all workspaces
         shared_cache_location = str(
-            PurePath(MultilspySettings.get_global_cache_directory(), "lsp", "EclipseJDTLS", "sharedIndex")
+            PurePath(
+                MultilspySettings.get_global_cache_directory(),
+                "lsp",
+                "EclipseJDTLS",
+                "sharedIndex",
+            )
         )
 
         jre_path = self.runtime_dependency_paths.jre_path
@@ -80,7 +135,9 @@ class EclipseJDTLS(LanguageServer):
         data_dir = str(PurePath(ws_dir, "data_dir"))
         jdtls_config_path = str(PurePath(ws_dir, "config_path"))
 
-        jdtls_readonly_config_path = self.runtime_dependency_paths.jdtls_readonly_config_path
+        jdtls_readonly_config_path = (
+            self.runtime_dependency_paths.jdtls_readonly_config_path
+        )
 
         if not os.path.exists(jdtls_config_path):
             shutil.copytree(jdtls_readonly_config_path, jdtls_config_path)
@@ -95,7 +152,10 @@ class EclipseJDTLS(LanguageServer):
             assert os.path.exists(static_path), static_path
 
         # TODO: Add "self.runtime_dependency_paths.jre_home_path"/bin to $PATH as well
-        proc_env = {"syntaxserver": "false", "JAVA_HOME": self.runtime_dependency_paths.jre_home_path}
+        proc_env = {
+            "syntaxserver": "false",
+            "JAVA_HOME": self.runtime_dependency_paths.jre_home_path,
+        }
         proc_cwd = repository_root_path
         cmd = " ".join(
             [
@@ -137,52 +197,90 @@ class EclipseJDTLS(LanguageServer):
         self.intellicode_enable_command_available = asyncio.Event()
         self.initialize_searcher_command_available = asyncio.Event()
 
-        super().__init__(config, logger, repository_root_path, ProcessLaunchInfo(cmd, proc_env, proc_cwd), "java")
+        super().__init__(
+            config,
+            logger,
+            repository_root_path,
+            ProcessLaunchInfo(cmd, proc_env, proc_cwd),
+            "java",
+        )
 
-    def setupRuntimeDependencies(self, logger: MultilspyLogger, config: MultilspyConfig) -> RuntimeDependencyPaths:
+    def setupRuntimeDependencies(
+        self, logger: MultilspyLogger, config: MultilspyConfig
+    ) -> RuntimeDependencyPaths:
         """
         Setup runtime dependencies for EclipseJDTLS.
         """
         platformId = PlatformUtils.get_platform_id()
 
-        with open(str(PurePath(os.path.dirname(__file__), "runtime_dependencies.json")), "r") as f:
+        with open(
+            str(PurePath(os.path.dirname(__file__), "runtime_dependencies.json")), "r"
+        ) as f:
             runtimeDependencies = json.load(f)
             del runtimeDependencies["_description"]
 
-        os.makedirs(str(PurePath(os.path.abspath(os.path.dirname(__file__)), "static")), exist_ok=True)
+        os.makedirs(
+            str(PurePath(os.path.abspath(os.path.dirname(__file__)), "static")),
+            exist_ok=True,
+        )
 
         # assert platformId.value in [
         #     "linux-x64",
         #     "win-x64",
         # ], "Only linux-x64 platform is supported for in multilspy at the moment"
 
+        # Determine Gradle version to use (from config or default)
+        gradle_version = config.gradle_version if config.gradle_version else "7.3.3"
+        gradle_dir_name = f"gradle-{gradle_version}"
         gradle_path = str(
             PurePath(
                 os.path.abspath(os.path.dirname(__file__)),
-                "static/gradle-7.3.3",
+                f"static/{gradle_dir_name}",
             )
         )
 
         if not os.path.exists(gradle_path):
-            FileUtils.download_and_extract_archive(
-                logger,
-                runtimeDependencies["gradle"]["platform-agnostic"]["url"],
-                str(PurePath(gradle_path).parent),
-                runtimeDependencies["gradle"]["platform-agnostic"]["archiveType"],
-            )
+            try:
+                gradle_url, gradle_archive_type, gradle_extraction_path = (
+                    self._resolve_gradle_download_url(
+                        runtimeDependencies, gradle_version
+                    )
+                )
+                FileUtils.download_and_extract_archive(
+                    logger,
+                    gradle_url,
+                    str(PurePath(gradle_path).parent),
+                    gradle_archive_type,
+                )
+                logger.log(
+                    f"Downloaded and extracted Gradle {gradle_version}", logging.INFO
+                )
+            except KeyError:
+                raise ValueError(
+                    f"Gradle version {gradle_version} not available. "
+                    f"Available versions: {', '.join(runtimeDependencies['gradle_versions'].keys())}"
+                )
 
-        assert os.path.exists(gradle_path)
+        assert os.path.exists(gradle_path), f"Gradle path does not exist: {gradle_path}"
 
         dependency = runtimeDependencies["vscode-java"][platformId.value]
         vscode_java_path = str(
-            PurePath(os.path.abspath(os.path.dirname(__file__)), "static", dependency["relative_extraction_path"])
+            PurePath(
+                os.path.abspath(os.path.dirname(__file__)),
+                "static",
+                dependency["relative_extraction_path"],
+            )
         )
         os.makedirs(vscode_java_path, exist_ok=True)
         jre_home_path = str(PurePath(vscode_java_path, dependency["jre_home_path"]))
         jre_path = str(PurePath(vscode_java_path, dependency["jre_path"]))
         lombok_jar_path = str(PurePath(vscode_java_path, dependency["lombok_jar_path"]))
-        jdtls_launcher_jar_path = str(PurePath(vscode_java_path, dependency["jdtls_launcher_jar_path"]))
-        jdtls_readonly_config_path = str(PurePath(vscode_java_path, dependency["jdtls_readonly_config_path"]))
+        jdtls_launcher_jar_path = str(
+            PurePath(vscode_java_path, dependency["jdtls_launcher_jar_path"])
+        )
+        jdtls_readonly_config_path = str(
+            PurePath(vscode_java_path, dependency["jdtls_readonly_config_path"])
+        )
         if not all(
             [
                 os.path.exists(vscode_java_path),
@@ -206,13 +304,85 @@ class EclipseJDTLS(LanguageServer):
         assert os.path.exists(jdtls_launcher_jar_path)
         assert os.path.exists(jdtls_readonly_config_path)
 
+        # Handle JDK version override if specified
+        if config.java_version:
+            jdk_version_dir = f"jdk-{config.java_version}"
+            override_jre_home_path = str(
+                PurePath(
+                    os.path.abspath(os.path.dirname(__file__)),
+                    f"static/{jdk_version_dir}",
+                )
+            )
+
+            if not os.path.exists(override_jre_home_path):
+                os.mkdir(override_jre_home_path)
+                try:
+                    jdk_url = self._resolve_jdk_download_url(
+                        runtimeDependencies, config.java_version, platformId.value
+                    )
+                    FileUtils.download_and_extract_archive(
+                        logger,
+                        jdk_url,
+                        override_jre_home_path,
+                        "tar.gz"
+                        if platformId.value.startswith(("linux", "osx"))
+                        else "zip",
+                    )
+                    logger.log(
+                        f"Downloaded and extracted JDK {config.java_version}",
+                        logging.INFO,
+                    )
+                except KeyError:
+                    raise ValueError(
+                        f"JDK version {config.java_version} not available for platform {platformId.value}. "
+                        f"Available versions: {', '.join(runtimeDependencies['jdk_versions'].keys())}"
+                    )
+
+            # Update paths to use the custom JDK
+            jre_home_path = override_jre_home_path
+            # For tar.gz extracted files, the JDK is typically in a subdirectory
+            jre_bin_path = str(PurePath(override_jre_home_path, "bin"))
+            if os.path.exists(jre_bin_path):
+                jre_path = str(
+                    PurePath(
+                        jre_bin_path,
+                        "java.exe" if platformId.value.startswith("win") else "java",
+                    )
+                )
+                os.chmod(jre_path, stat.S_IEXEC)
+            else:
+                # If bin doesn't exist, try the root
+                jre_path = str(
+                    PurePath(
+                        override_jre_home_path,
+                        "bin/java.exe"
+                        if platformId.value.startswith("win")
+                        else "bin/java",
+                    )
+                )
+
+            logger.log(
+                f"Using custom JDK {config.java_version} at {jre_home_path}",
+                logging.INFO,
+            )
+
         dependency = runtimeDependencies["intellicode"]["platform-agnostic"]
         intellicode_directory_path = str(
-            PurePath(os.path.abspath(os.path.dirname(__file__)), "static", dependency["relative_extraction_path"])
+            PurePath(
+                os.path.abspath(os.path.dirname(__file__)),
+                "static",
+                dependency["relative_extraction_path"],
+            )
         )
         os.makedirs(intellicode_directory_path, exist_ok=True)
-        intellicode_jar_path = str(PurePath(intellicode_directory_path, dependency["intellicode_jar_path"]))
-        intellisense_members_path = str(PurePath(intellicode_directory_path, dependency["intellisense_members_path"]))
+        intellicode_jar_path = str(
+            PurePath(intellicode_directory_path, dependency["intellicode_jar_path"])
+        )
+        intellisense_members_path = str(
+            PurePath(
+                intellicode_directory_path, dependency["intellisense_members_path"]
+            )
+        )
         if not all(
             [
                 os.path.exists(intellicode_directory_path),
@@ -221,7 +391,10 @@ class EclipseJDTLS(LanguageServer):
             ]
         ):
             FileUtils.download_and_extract_archive(
-                logger, dependency["url"], intellicode_directory_path, dependency["archiveType"]
+                logger,
+                dependency["url"],
+                intellicode_directory_path,
+                dependency["archiveType"],
             )
 
         assert os.path.exists(intellicode_directory_path)
@@ -244,7 +417,9 @@ class EclipseJDTLS(LanguageServer):
         Returns the initialize parameters for the EclipseJDTLS server.
         """
         # Look into https://github.com/eclipse/eclipse.jdt.ls/blob/master/org.eclipse.jdt.ls.core/src/org/eclipse/jdt/ls/core/internal/preferences/Preferences.java to understand all the options available
-        with open(str(PurePath(os.path.dirname(__file__), "initialize_params.json")), "r") as f:
+        with open(
+            str(PurePath(os.path.dirname(__file__), "initialize_params.json")), "r"
+        ) as f:
             d: InitializeParams = json.load(f)
 
         del d["_description"]
@@ -261,8 +436,13 @@ class EclipseJDTLS(LanguageServer):
         assert d["rootUri"] == "pathlib.Path(repository_absolute_path).as_uri()"
         d["rootUri"] = pathlib.Path(repository_absolute_path).as_uri()
 
-        assert d["initializationOptions"]["workspaceFolders"] == "[pathlib.Path(repository_absolute_path).as_uri()]"
-        d["initializationOptions"]["workspaceFolders"] = [pathlib.Path(repository_absolute_path).as_uri()]
+        assert (
+            d["initializationOptions"]["workspaceFolders"]
+            == "[pathlib.Path(repository_absolute_path).as_uri()]"
+        )
+        d["initializationOptions"]["workspaceFolders"] = [
+            pathlib.Path(repository_absolute_path).as_uri()
+        ]
 
         assert (
             d["workspaceFolders"]
@@ -279,30 +459,90 @@ class EclipseJDTLS(LanguageServer):
         bundles = [self.runtime_dependency_paths.intellicode_jar_path]
         d["initializationOptions"]["bundles"] = bundles
 
-        assert d["initializationOptions"]["settings"]["java"]["configuration"]["runtimes"] == [
-            {"name": "JavaSE-17", "path": "static/vscode-java/extension/jre/17.0.8.1-linux-x86_64", "default": True}
+        assert d["initializationOptions"]["settings"]["java"]["configuration"][
+            "runtimes"
+        ] == [
+            {
+                "name": "JavaSE-17",
+                "path": "static/vscode-java/extension/jre/17.0.8.1-linux-x86_64",
+                "default": True,
+            }
         ]
         d["initializationOptions"]["settings"]["java"]["configuration"]["runtimes"] = [
-            {"name": "JavaSE-17", "path": self.runtime_dependency_paths.jre_home_path, "default": True}
+            {
+                "name": "JavaSE-17",
+                "path": self.runtime_dependency_paths.jre_home_path,
+                "default": True,
+            }
         ]
 
-        for runtime in d["initializationOptions"]["settings"]["java"]["configuration"]["runtimes"]:
+        for runtime in d["initializationOptions"]["settings"]["java"]["configuration"][
+            "runtimes"
+        ]:
             assert "name" in runtime
             assert "path" in runtime
-            assert os.path.exists(
-                runtime["path"]
-            ), f"Runtime required for eclipse_jdtls at path {runtime['path']} does not exist"
+            assert os.path.exists(runtime["path"]), (
+                f"Runtime required for eclipse_jdtls at path {runtime['path']} does not exist"
+            )
 
-        assert d["initializationOptions"]["settings"]["java"]["import"]["gradle"]["home"] == "abs(static/gradle-7.3.3)"
-        d["initializationOptions"]["settings"]["java"]["import"]["gradle"][
-            "home"
-        ] = self.runtime_dependency_paths.gradle_path
+        assert (
+            d["initializationOptions"]["settings"]["java"]["import"]["gradle"]["home"]
+            == "abs(static/gradle-7.3.3)"
+        )
+        d["initializationOptions"]["settings"]["java"]["import"]["gradle"]["home"] = (
+            self.runtime_dependency_paths.gradle_path
+        )
 
         d["initializationOptions"]["settings"]["java"]["import"]["gradle"]["java"][
             "home"
         ] = self.runtime_dependency_paths.jre_path
 
         return d
+
+    def _apply_version_overrides(self, initialize_params: InitializeParams) -> None:
+        """
+        Apply version overrides from MultilspyConfig to the initialize parameters.
+
+        Updates the initialize parameters with overridden JDK, Gradle, and Lombok versions
+        if they were specified in the configuration and downloaded/resolved during setup.
+
+        Args:
+            initialize_params: The initialize parameters to modify in-place
+        """
+        # Override Java version if specified
+        if self.config.java_version:
+            runtimes = initialize_params["initializationOptions"]["settings"]["java"][
+                "configuration"
+            ]["runtimes"]
+            if runtimes:
+                runtime = runtimes[0]
+                # Update the runtime name (e.g., "JavaSE-17" -> "JavaSE-21")
+                runtime["name"] = f"JavaSE-{self.config.java_version}"
+                # Path should already be updated by setupRuntimeDependencies
+                runtime["path"] = self.runtime_dependency_paths.jre_home_path
+                self.logger.log(
+                    f"Applied java_version override: {self.config.java_version} at {runtime['path']}",
+                    logging.INFO,
+                )
+
+        # Override Gradle version if specified
+        if self.config.gradle_version:
+            gradle_config = initialize_params["initializationOptions"]["settings"]["import"]["gradle"]
+            gradle_config["home"] = self.runtime_dependency_paths.gradle_path
+            # Also update the Java home for gradle
+            gradle_config["java"]["home"] = self.runtime_dependency_paths.jre_path
+            self.logger.log(
+                f"Applied gradle_version override: {self.config.gradle_version} at {gradle_config['home']}",
+                logging.INFO,
+            )
+
+        # Override Lombok version if specified
+        if self.config.lombok_version:
+            self.logger.log(
+                f"Applied lombok_version override: {self.config.lombok_version}. "
+                f"Using lombok jar at {self.runtime_dependency_paths.lombok_jar_path}",
+                logging.INFO,
+            )
 
     @asynccontextmanager
     async def start_server(self) -> AsyncIterator["EclipseJDTLS"]:
@@ -334,7 +574,10 @@ class EclipseJDTLS(LanguageServer):
                     ]
                     self.completions_available.set()
                 if registration["method"] == "workspace/executeCommand":
-                    if "java.intellicode.enable" in registration["registerOptions"]["commands"]:
+                    if (
+                        "java.intellicode.enable"
+                        in registration["registerOptions"]["commands"]
+                    ):
                         self.intellicode_enable_command_available.set()
             return
 
@@ -359,7 +602,9 @@ class EclipseJDTLS(LanguageServer):
         self.server.on_request("client/registerCapability", register_capability_handler)
         self.server.on_notification("language/status", lang_status_handler)
         self.server.on_notification("window/logMessage", window_log_message)
-        self.server.on_request("workspace/executeClientCommand", execute_client_command_handler)
+        self.server.on_request(
+            "workspace/executeClientCommand", execute_client_command_handler
+        )
         self.server.on_notification("$/progress", do_nothing)
         self.server.on_notification("textDocument/publishDiagnostics", do_nothing)
         self.server.on_notification("language/actionableNotification", do_nothing)
@@ -373,6 +618,8 @@ class EclipseJDTLS(LanguageServer):
                 "Sending initialize request from LSP client to LSP server and awaiting response",
                 logging.INFO,
             )
+            # Apply version overrides from config if specified
+            self._apply_version_overrides(initialize_params)
             init_response = await self.server.send.initialize(initialize_params)
             assert init_response["capabilities"]["textDocumentSync"]["change"] == 2
             assert "completionProvider" not in init_response["capabilities"]
@@ -386,7 +633,9 @@ class EclipseJDTLS(LanguageServer):
 
             await self.intellicode_enable_command_available.wait()
 
-            java_intellisense_members_path = self.runtime_dependency_paths.intellisense_members_path
+            java_intellisense_members_path = (
+                self.runtime_dependency_paths.intellisense_members_path
+            )
             assert os.path.exists(java_intellisense_members_path)
             intellicode_enable_result = await self.server.send.execute_command(
                 {

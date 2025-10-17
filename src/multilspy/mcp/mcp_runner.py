@@ -42,6 +42,11 @@ from multilspy.multilspy_exceptions import MultilspyException
 
 LSP_TOML_SCHEMA = """
 # LSP Configuration for multilspy MCP
+#
+# For detailed information about available configurations:
+# - Java version and gradle version: see src/multilspy/language_servers/eclipse_jdtls/eclipse_jdtls.py
+# - Lombok version: see src/multilspy/language_servers/eclipse_jdtls/runtime_dependencies.json
+# - Initialize parameters: see src/multilspy/language_servers/eclipse_jdtls/initialize_params.json
 
 # Main LSP configuration section
 [lsp]
@@ -49,15 +54,22 @@ LSP_TOML_SCHEMA = """
 language_servers = ["java"]
 
 # Java language server configuration (optional)
+# See: src/multilspy/language_servers/eclipse_jdtls/runtime_dependencies.json for available versions
 [lsp.java]
 # List of Java project roots (workspace directories)
 roots = ["/path/to/java/project"]
 
 # Java version (optional, defaults to system default)
+# Retrieved from: src/multilspy/language_servers/eclipse_jdtls/initialize_params.json -> initializationOptions.settings.java.configuration.runtimes
 # java_version = "17"
 
 # Gradle version (optional, defaults to 7.3.3)
+# Retrieved from: src/multilspy/language_servers/eclipse_jdtls/runtime_dependencies.json -> gradle
 # gradle_version = "7.3.3"
+
+# Lombok version (optional, defaults to 1.18.30)
+# Retrieved from: src/multilspy/language_servers/eclipse_jdtls/runtime_dependencies.json -> vscode-java[platform].lombok_jar_path
+# lombok_version = "1.18.30"
 
 # Python language server configuration (optional)
 [lsp.python]
@@ -93,6 +105,7 @@ class LanguageServerConfig:
     roots: List[str] = field(default_factory=list)
     java_version: Optional[str] = None
     gradle_version: Optional[str] = None
+    lombok_version: Optional[str] = None
 
     def validate(self) -> Tuple[bool, Optional[str]]:
         """
@@ -158,6 +171,7 @@ class LSPConfig:
                 roots=roots,
                 java_version=lang_config_dict.get("java_version"),
                 gradle_version=lang_config_dict.get("gradle_version"),
+                lombok_version=lang_config_dict.get("lombok_version"),
             )
 
             # Validate
@@ -336,7 +350,10 @@ class MCPRunner:
                 continue
 
             if len(server_config.roots) == 0:
-                self.logger.log(f"Found server config for {language} that had no roots. No default provided.", logging.INFO)
+                self.logger.log(
+                    f"Found server config for {language} that had no roots. No default provided.",
+                    logging.INFO,
+                )
                 continue
 
             project_root = server_config.roots[0]
@@ -473,9 +490,15 @@ class MCPRunner:
             try:
                 if file_path:
                     lsp.open_file(file_path)
-                    result = lsp.request_text_document_diagnostics(lsp_types.DocumentDiagnosticParams(textDocument=TextDocumentIdentifier(uri=file_path)))
+                    result = lsp.request_text_document_diagnostics(
+                        lsp_types.DocumentDiagnosticParams(
+                            textDocument=TextDocumentIdentifier(uri=file_path)
+                        )
+                    )
                 else:
-                    result = lsp.request_workspace_document_diagnostics(lsp_types.WorkspaceDiagnosticParams(previousResultIds=[]))
+                    result = lsp.request_workspace_document_diagnostics(
+                        lsp_types.WorkspaceDiagnosticParams(previousResultIds=[])
+                    )
 
                 return json.dumps({"status": "success", "diagnostics": result or []})
             except Exception as e:
