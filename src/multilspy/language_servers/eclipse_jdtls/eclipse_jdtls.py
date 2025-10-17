@@ -307,64 +307,67 @@ class EclipseJDTLS(LanguageServer):
         # Handle JDK version override if specified
         if config.java_version:
             jdk_version_dir = f"jdk-{config.java_version}"
-            override_jre_home_path = str(
+            override_jdk_base_path = str(
                 PurePath(
                     os.path.abspath(os.path.dirname(__file__)),
                     f"static/{jdk_version_dir}",
                 )
             )
 
-            if not os.path.exists(override_jre_home_path):
-                os.mkdir(override_jre_home_path)
+            if not os.path.exists(override_jdk_base_path):
+                os.makedirs(override_jdk_base_path, exist_ok=True)
                 try:
-                    jdk_url = self._resolve_jdk_download_url(
-                        runtimeDependencies, config.java_version, platformId.value
-                    )
+                    jdk_config = runtimeDependencies["jdk_versions"][
+                        config.java_version
+                    ][platformId.value]
+                    if isinstance(jdk_config, str):
+                        # Old format (just URL string) - not supported anymore
+                        raise ValueError(
+                            f"JDK configuration format invalid. Expected object with url, archiveType, jre_home_path, jre_path"
+                        )
+
+                    jdk_url = jdk_config["url"]
+                    jdk_archive_type = jdk_config["archiveType"]
+
                     FileUtils.download_and_extract_archive(
                         logger,
                         jdk_url,
-                        override_jre_home_path,
-                        "tar.gz"
-                        if platformId.value.startswith(("linux", "osx"))
-                        else "zip",
+                        override_jdk_base_path,
+                        jdk_archive_type,
                     )
                     logger.log(
-                        f"Downloaded and extracted JDK {config.java_version}",
+                        f"Downloaded and extracted JDK {config.java_version} for {platformId.value}",
                         logging.INFO,
                     )
-                except KeyError:
+                except KeyError as e:
                     raise ValueError(
                         f"JDK version {config.java_version} not available for platform {platformId.value}. "
                         f"Available versions: {', '.join(runtimeDependencies['jdk_versions'].keys())}"
                     )
 
-            # Update paths to use the custom JDK
-            jre_home_path = override_jre_home_path
-            # For tar.gz extracted files, the JDK is typically in a subdirectory
-            jre_bin_path = str(PurePath(override_jre_home_path, "bin"))
-            if os.path.exists(jre_bin_path):
-                jre_path = str(
-                    PurePath(
-                        jre_bin_path,
-                        "java.exe" if platformId.value.startswith("win") else "java",
-                    )
-                )
-                os.chmod(jre_path, stat.S_IEXEC)
-            else:
-                # If bin doesn't exist, try the root
-                jre_path = str(
-                    PurePath(
-                        override_jre_home_path,
-                        "bin/java.exe"
-                        if platformId.value.startswith("win")
-                        else "bin/java",
-                    )
-                )
+            # Update paths to use the custom JDK using platform-specific paths from config
+            try:
+                jdk_config = runtimeDependencies["jdk_versions"][config.java_version][
+                    platformId.value
+                ]
+                jdk_relative_home = jdk_config["jre_home_path"]
+                jdk_relative_path = jdk_config["jre_path"]
 
-            logger.log(
-                f"Using custom JDK {config.java_version} at {jre_home_path}",
-                logging.INFO,
-            )
+                jre_home_path = str(PurePath(override_jdk_base_path, jdk_relative_home))
+                jre_path = str(PurePath(override_jdk_base_path, jdk_relative_path))
+
+                # Ensure jre_path has execute permissions
+                if os.path.exists(jre_path):
+                    os.chmod(jre_path, stat.S_IEXEC)
+
+                logger.log(
+                    f"Using custom JDK {config.java_version} at {jre_home_path}",
+                    logging.INFO,
+                )
+            except (KeyError, OSError) as e:
+                raise ValueError(
+                    f"Failed to configure custom JDK {config.java_version}: {str(e)}"
+                )
 
         dependency = runtimeDependencies["intellicode"]["platform-agnostic"]
         intellicode_directory_path = str(
@@ -527,7 +530,9 @@ class EclipseJDTLS(LanguageServer):
 
         # Override Gradle version if specified
         if self.config.gradle_version:
-            gradle_config = initialize_params["initializationOptions"]["settings"]["import"]["gradle"]
+            gradle_config = initialize_params["initializationOptions"]["settings"][
+                "import"
+            ]["gradle"]
             gradle_config["home"] = self.runtime_dependency_paths.gradle_path
             # Also update the Java home for gradle
             gradle_config["java"]["home"] = self.runtime_dependency_paths.jre_path
