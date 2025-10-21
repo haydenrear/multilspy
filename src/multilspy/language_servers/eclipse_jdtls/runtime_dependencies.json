@@ -1,157 +1,159 @@
 {
   "_description": "This file lists the runtime dependencies for the Java Language Server",
-  "jdk_versions": {
-    "_description": "JDK versions available for download. Platform format: linux-x64, osx-x64, osx-arm64, win-x64, linux-arm64. Each platform specifies URL, archive type, and paths to jre_home and jre executables after extraction.",
-    "17": {
-      "linux-x64": {
-        "url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.8%2B7/OpenJDK17U-jdk_x64_linux_hotspot_17.0.8_7.tar.gz",
-        "archiveType": "tar.gz",
-        "jre_home_path": "jdk-17.0.8+7",
-        "jre_path": "jdk-17.0.8+7/bin/java"
+  "dependencies": {
+    "jdk_versions": {
+      "_description": "JDK versions available for download. Platform format: linux-x64, osx-x64, osx-arm64, win-x64, linux-arm64. Each platform specifies URL, archive type, and paths to jre_home and jre executables after extraction.",
+      "17": {
+        "linux-x64": {
+          "url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.8%2B7/OpenJDK17U-jdk_x64_linux_hotspot_17.0.8_7.tar.gz",
+          "archiveType": "tar.gz",
+          "jre_home_path": "jdk-17.0.8+7",
+          "jre_path": "jdk-17.0.8+7/bin/java"
+        },
+        "osx-x64": {
+          "url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.8%2B7/OpenJDK17U-jdk_x64_mac_hotspot_17.0.8_7.tar.gz",
+          "archiveType": "tar.gz",
+          "jre_home_path": "jdk-17.0.8+7/Contents/Home",
+          "jre_path": "jdk-17.0.8+7/Contents/Home/bin/java"
+        },
+        "osx-arm64": {
+          "url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.8%2B7/OpenJDK17U-jdk_aarch64_mac_hotspot_17.0.8_7.tar.gz",
+          "archiveType": "tar.gz",
+          "jre_home_path": "jdk-17.0.8+7/Contents/Home",
+          "jre_path": "jdk-17.0.8+7/Contents/Home/bin/java"
+        },
+        "win-x64": {
+          "url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.8%2B7/OpenJDK17U-jdk_x64_windows_hotspot_17.0.8_7.zip",
+          "archiveType": "zip",
+          "jre_home_path": "jdk-17.0.8+7",
+          "jre_path": "jdk-17.0.8+7/bin/java.exe"
+        },
+        "linux-arm64": {
+          "url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.8%2B7/OpenJDK17U-jdk_aarch64_linux_hotspot_17.0.8_7.tar.gz",
+          "archiveType": "tar.gz",
+          "jre_home_path": "jdk-17.0.8+7",
+          "jre_path": "jdk-17.0.8+7/bin/java"
+        }
       },
-      "osx-x64": {
-        "url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.8%2B7/OpenJDK17U-jdk_x64_mac_hotspot_17.0.8_7.tar.gz",
-        "archiveType": "tar.gz",
-        "jre_home_path": "jdk-17.0.8+7/Contents/Home",
-        "jre_path": "jdk-17.0.8+7/Contents/Home/bin/java"
-      },
-      "osx-arm64": {
-        "url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.8%2B7/OpenJDK17U-jdk_aarch64_mac_hotspot_17.0.8_7.tar.gz",
-        "archiveType": "tar.gz",
-        "jre_home_path": "jdk-17.0.8+7/Contents/Home",
-        "jre_path": "jdk-17.0.8+7/Contents/Home/bin/java"
-      },
-      "win-x64": {
-        "url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.8%2B7/OpenJDK17U-jdk_x64_windows_hotspot_17.0.8_7.zip",
-        "archiveType": "zip",
-        "jre_home_path": "jdk-17.0.8+7",
-        "jre_path": "jdk-17.0.8+7/bin/java.exe"
-      },
-      "linux-arm64": {
-        "url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.8%2B7/OpenJDK17U-jdk_aarch64_linux_hotspot_17.0.8_7.tar.gz",
-        "archiveType": "tar.gz",
-        "jre_home_path": "jdk-17.0.8+7",
-        "jre_path": "jdk-17.0.8+7/bin/java"
+      "21": {
+        "linux-x64": {
+          "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.1%2B12/OpenJDK21U-jdk_x64_linux_hotspot_21.0.1_12.tar.gz",
+          "archiveType": "tar.gz",
+          "jre_home_path": "jdk-21.0.1+12",
+          "jre_path": "jdk-21.0.1+12/bin/java"
+        },
+        "osx-x64": {
+          "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.1%2B12/OpenJDK21U-jdk_x64_mac_hotspot_21.0.1_12.tar.gz",
+          "archiveType": "tar.gz",
+          "jre_home_path": "jdk-21.0.1+12/Contents/Home",
+          "jre_path": "jdk-21.0.1+12/Contents/Home/bin/java"
+        },
+        "osx-arm64": {
+          "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.1%2B12/OpenJDK21U-jdk_aarch64_mac_hotspot_21.0.1_12.tar.gz",
+          "archiveType": "tar.gz",
+          "jre_home_path": "jdk-21.0.1+12/Contents/Home",
+          "jre_path": "jdk-21.0.1+12/Contents/Home/bin/java"
+        },
+        "win-x64": {
+          "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.1%2B12/OpenJDK21U-jdk_x64_windows_hotspot_21.0.1_12.zip",
+          "archiveType": "zip",
+          "jre_home_path": "jdk-21.0.1+12",
+          "jre_path": "jdk-21.0.1+12/bin/java.exe"
+        },
+        "linux-arm64": {
+          "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.1%2B12/OpenJDK21U-jdk_aarch64_linux_hotspot_21.0.1_12.tar.gz",
+          "archiveType": "tar.gz",
+          "jre_home_path": "jdk-21.0.1+12",
+          "jre_path": "jdk-21.0.1+12/bin/java"
+        }
       }
     },
-    "21": {
-      "linux-x64": {
-        "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.1%2B12/OpenJDK21U-jdk_x64_linux_hotspot_21.0.1_12.tar.gz",
-        "archiveType": "tar.gz",
-        "jre_home_path": "jdk-21.0.1+12",
-        "jre_path": "jdk-21.0.1+12/bin/java"
+    "gradle_versions": {
+      "_description": "Gradle versions available for download (platform-agnostic)",
+      "7.3.3": {
+        "url": "https://services.gradle.org/distributions/gradle-7.3.3-bin.zip",
+        "archiveType": "zip",
+        "relative_extraction_path": "."
       },
-      "osx-x64": {
-        "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.1%2B12/OpenJDK21U-jdk_x64_mac_hotspot_21.0.1_12.tar.gz",
-        "archiveType": "tar.gz",
-        "jre_home_path": "jdk-21.0.1+12/Contents/Home",
-        "jre_path": "jdk-21.0.1+12/Contents/Home/bin/java"
+      "8.0": {
+        "url": "https://services.gradle.org/distributions/gradle-8.0-bin.zip",
+        "archiveType": "zip",
+        "relative_extraction_path": "."
+      },
+      "8.5": {
+        "url": "https://services.gradle.org/distributions/gradle-8.5-bin.zip",
+        "archiveType": "zip",
+        "relative_extraction_path": "."
+      }
+    },
+    "gradle": {
+      "platform-agnostic": {
+        "url": "https://services.gradle.org/distributions/gradle-7.3.3-bin.zip",
+        "archiveType": "zip",
+        "relative_extraction_path": "."
+      }
+    },
+    "vscode-java": {
+      "darwin-arm64": {
+        "url": "https://github.com/redhat-developer/vscode-java/releases/download/v1.23.0/java@darwin-arm64-1.23.0.vsix",
+        "archiveType": "zip",
+        "relative_extraction_path": "vscode-java"
       },
       "osx-arm64": {
-        "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.1%2B12/OpenJDK21U-jdk_aarch64_mac_hotspot_21.0.1_12.tar.gz",
-        "archiveType": "tar.gz",
-        "jre_home_path": "jdk-21.0.1+12/Contents/Home",
-        "jre_path": "jdk-21.0.1+12/Contents/Home/bin/java"
-      },
-      "win-x64": {
-        "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.1%2B12/OpenJDK21U-jdk_x64_windows_hotspot_21.0.1_12.zip",
+        "url": "https://github.com/redhat-developer/vscode-java/releases/download/v1.23.0/java@darwin-x64-1.23.0.vsix",
         "archiveType": "zip",
-        "jre_home_path": "jdk-21.0.1+12",
-        "jre_path": "jdk-21.0.1+12/bin/java.exe"
+        "relative_extraction_path": "vscode-java",
+        "jre_home_path": "extension/jre/17.0.8.1-macosx-x86_64",
+        "jre_path": "extension/jre/17.0.8.1-macosx-x86_64/bin/java",
+        "lombok_jar_path": "extension/lombok/lombok-1.18.30.jar",
+        "jdtls_launcher_jar_path": "extension/server/plugins/org.eclipse.equinox.launcher_1.6.500.v20230717-2134.jar",
+        "jdtls_readonly_config_path": "extension/server/config_mac_arm"
+      },
+      "osx-x64": {
+        "url": "https://github.com/redhat-developer/vscode-java/releases/download/v1.23.0/java@darwin-x64-1.23.0.vsix",
+        "archiveType": "zip",
+        "relative_extraction_path": "vscode-java",
+        "jre_home_path": "extension/jre/17.0.8.1-macosx-x86_64",
+        "jre_path": "extension/jre/17.0.8.1-macosx-x86_64/bin/java",
+        "lombok_jar_path": "extension/lombok/lombok-1.18.30.jar",
+        "jdtls_launcher_jar_path": "extension/server/plugins/org.eclipse.equinox.launcher_1.6.500.v20230717-2134.jar",
+        "jdtls_readonly_config_path": "extension/server/config_mac"
       },
       "linux-arm64": {
-        "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.1%2B12/OpenJDK21U-jdk_aarch64_linux_hotspot_21.0.1_12.tar.gz",
-        "archiveType": "tar.gz",
-        "jre_home_path": "jdk-21.0.1+12",
-        "jre_path": "jdk-21.0.1+12/bin/java"
+        "url": "https://github.com/redhat-developer/vscode-java/releases/download/v1.23.0/java@linux-arm64-1.23.0.vsix",
+        "archiveType": "zip",
+        "relative_extraction_path": "vscode-java"
+      },
+      "linux-x64": {
+        "url": "https://github.com/redhat-developer/vscode-java/releases/download/v1.23.0/java@linux-x64-1.23.0.vsix",
+        "archiveType": "zip",
+        "relative_extraction_path": "vscode-java",
+        "jre_home_path": "extension/jre/17.0.8.1-linux-x86_64",
+        "jre_path": "extension/jre/17.0.8.1-linux-x86_64/bin/java",
+        "lombok_jar_path": "extension/lombok/lombok-1.18.30.jar",
+        "jdtls_launcher_jar_path": "extension/server/plugins/org.eclipse.equinox.launcher_1.6.500.v20230717-2134.jar",
+        "jdtls_readonly_config_path": "extension/server/config_linux"
+      },
+      "win-x64": {
+        "url": "https://github.com/redhat-developer/vscode-java/releases/download/v1.23.0/java@win32-x64-1.23.0.vsix",
+        "archiveType": "zip",
+        "relative_extraction_path": "vscode-java",
+        "jre_home_path": "extension/jre/17.0.8.1-win32-x86_64",
+        "jre_path": "extension/jre/17.0.8.1-win32-x86_64/bin/java.exe",
+        "lombok_jar_path": "extension/lombok/lombok-1.18.30.jar",
+        "jdtls_launcher_jar_path": "extension/server/plugins/org.eclipse.equinox.launcher_1.6.500.v20230717-2134.jar",
+        "jdtls_readonly_config_path": "extension/server/config_win"
       }
-    }
-  },
-  "gradle_versions": {
-    "_description": "Gradle versions available for download (platform-agnostic)",
-    "7.3.3": {
-      "url": "https://services.gradle.org/distributions/gradle-7.3.3-bin.zip",
-      "archiveType": "zip",
-      "relative_extraction_path": "."
     },
-    "8.0": {
-      "url": "https://services.gradle.org/distributions/gradle-8.0-bin.zip",
-      "archiveType": "zip",
-      "relative_extraction_path": "."
-    },
-    "8.5": {
-      "url": "https://services.gradle.org/distributions/gradle-8.5-bin.zip",
-      "archiveType": "zip",
-      "relative_extraction_path": "."
-    }
-  },
-  "gradle": {
-    "platform-agnostic": {
-      "url": "https://services.gradle.org/distributions/gradle-7.3.3-bin.zip",
-      "archiveType": "zip",
-      "relative_extraction_path": "."
-    }
-  },
-  "vscode-java": {
-    "darwin-arm64": {
-      "url": "https://github.com/redhat-developer/vscode-java/releases/download/v1.23.0/java@darwin-arm64-1.23.0.vsix",
-      "archiveType": "zip",
-      "relative_extraction_path": "vscode-java"
-    },
-    "osx-arm64": {
-      "url": "https://github.com/redhat-developer/vscode-java/releases/download/v1.23.0/java@darwin-x64-1.23.0.vsix",
-      "archiveType": "zip",
-      "relative_extraction_path": "vscode-java",
-      "jre_home_path": "extension/jre/17.0.8.1-macosx-x86_64",
-      "jre_path": "extension/jre/17.0.8.1-macosx-x86_64/bin/java",
-      "lombok_jar_path": "extension/lombok/lombok-1.18.30.jar",
-      "jdtls_launcher_jar_path": "extension/server/plugins/org.eclipse.equinox.launcher_1.6.500.v20230717-2134.jar",
-      "jdtls_readonly_config_path": "extension/server/config_mac_arm"
-    },
-    "osx-x64": {
-      "url": "https://github.com/redhat-developer/vscode-java/releases/download/v1.23.0/java@darwin-x64-1.23.0.vsix",
-      "archiveType": "zip",
-      "relative_extraction_path": "vscode-java",
-      "jre_home_path": "extension/jre/17.0.8.1-macosx-x86_64",
-      "jre_path": "extension/jre/17.0.8.1-macosx-x86_64/bin/java",
-      "lombok_jar_path": "extension/lombok/lombok-1.18.30.jar",
-      "jdtls_launcher_jar_path": "extension/server/plugins/org.eclipse.equinox.launcher_1.6.500.v20230717-2134.jar",
-      "jdtls_readonly_config_path": "extension/server/config_mac"
-    },
-    "linux-arm64": {
-      "url": "https://github.com/redhat-developer/vscode-java/releases/download/v1.23.0/java@linux-arm64-1.23.0.vsix",
-      "archiveType": "zip",
-      "relative_extraction_path": "vscode-java"
-    },
-    "linux-x64": {
-      "url": "https://github.com/redhat-developer/vscode-java/releases/download/v1.23.0/java@linux-x64-1.23.0.vsix",
-      "archiveType": "zip",
-      "relative_extraction_path": "vscode-java",
-      "jre_home_path": "extension/jre/17.0.8.1-linux-x86_64",
-      "jre_path": "extension/jre/17.0.8.1-linux-x86_64/bin/java",
-      "lombok_jar_path": "extension/lombok/lombok-1.18.30.jar",
-      "jdtls_launcher_jar_path": "extension/server/plugins/org.eclipse.equinox.launcher_1.6.500.v20230717-2134.jar",
-      "jdtls_readonly_config_path": "extension/server/config_linux"
-    },
-    "win-x64": {
-      "url": "https://github.com/redhat-developer/vscode-java/releases/download/v1.23.0/java@win32-x64-1.23.0.vsix",
-      "archiveType": "zip",
-      "relative_extraction_path": "vscode-java",
-      "jre_home_path": "extension/jre/17.0.8.1-win32-x86_64",
-      "jre_path": "extension/jre/17.0.8.1-win32-x86_64/bin/java.exe",
-      "lombok_jar_path": "extension/lombok/lombok-1.18.30.jar",
-      "jdtls_launcher_jar_path": "extension/server/plugins/org.eclipse.equinox.launcher_1.6.500.v20230717-2134.jar",
-      "jdtls_readonly_config_path": "extension/server/config_win"
-    }
-  },
-  "intellicode": {
-    "platform-agnostic": {
-      "url": "https://VisualStudioExptTeam.gallery.vsassets.io/_apis/public/gallery/publisher/VisualStudioExptTeam/extension/vscodeintellicode/1.2.30/assetbyname/Microsoft.VisualStudio.Services.VSIXPackage",
-      "alternate_url": "https://marketplace.visualstudio.com/_apis/public/gallery/publishers/VisualStudioExptTeam/vsextensions/vscodeintellicode/1.2.30/vspackage",
-      "archiveType": "zip",
-      "relative_extraction_path": "intellicode",
-      "intellicode_jar_path": "extension/dist/com.microsoft.jdtls.intellicode.core-0.7.0.jar",
-      "intellisense_members_path": "extension/dist/bundledModels/java_intellisense-members"
+    "intellicode": {
+      "platform-agnostic": {
+        "url": "https://VisualStudioExptTeam.gallery.vsassets.io/_apis/public/gallery/publisher/VisualStudioExptTeam/extension/vscodeintellicode/1.2.30/assetbyname/Microsoft.VisualStudio.Services.VSIXPackage",
+        "alternate_url": "https://marketplace.visualstudio.com/_apis/public/gallery/publishers/VisualStudioExptTeam/vsextensions/vscodeintellicode/1.2.30/vspackage",
+        "archiveType": "zip",
+        "relative_extraction_path": "intellicode",
+        "intellicode_jar_path": "extension/dist/com.microsoft.jdtls.intellicode.core-0.7.0.jar",
+        "intellisense_members_path": "extension/dist/bundledModels/java_intellisense-members"
+      }
     }
   }
 }
