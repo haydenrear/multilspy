@@ -349,7 +349,7 @@ class InitializeParamsConfig(BaseModel):
         None, alias="initializationOptions"
     )
     trace: Optional[str] = Field(None)
-    workspace_folders: Optional[List[Dict[str, Any]]] = Field(
+    workspace_folders: Optional[Union[str, List[Dict[str, Any]]]] = Field(
         None, alias="workspaceFolders"
     )
 
@@ -412,3 +412,57 @@ class InitializeParamsConfig(BaseModel):
             ]
             if any(indicator in obj for indicator in placeholder_indicators):
                 substitutions.append((path, obj))
+
+    def get_initialization_option(self, *keys: str, default: Any = None) -> Any:
+        """
+        Get a nested value from initializationOptions using a path of keys.
+
+        Args:
+            *keys: Variable number of keys representing the path to the value
+            default: Default value if path doesn't exist
+
+        Returns:
+            The value at the specified path, or default if not found
+
+        Example:
+            config.get_initialization_option("bundles")
+            config.get_initialization_option("settings", "java", "configuration", "runtimes")
+        """
+        if not self.initialization_options:
+            return default
+
+        current = self.initialization_options
+        for key in keys:
+            if isinstance(current, dict) and key in current:
+                current = current[key]
+            else:
+                return default
+        return current
+
+    def set_initialization_option(self, value: Any, *keys: str) -> None:
+        """
+        Set a nested value in initializationOptions using a path of keys.
+
+        Creates intermediate dictionaries as needed.
+
+        Args:
+            value: The value to set
+            *keys: Variable number of keys representing the path to the value
+
+        Example:
+            config.set_initialization_option(["/path/to/jar"], "bundles")
+            config.set_initialization_option([{"name": "JavaSE-17", "path": "/jdk"}], "settings", "java", "configuration", "runtimes")
+        """
+        if self.initialization_options is None:
+            self.initialization_options = {}
+
+        current = self.initialization_options
+        # Navigate/create the path to the parent of the final key
+        for key in keys[:-1]:
+            if key not in current:
+                current[key] = {}
+            current = current[key]
+
+        # Set the final value
+        if keys:
+            current[keys[-1]] = value

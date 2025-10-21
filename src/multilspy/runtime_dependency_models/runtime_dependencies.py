@@ -174,7 +174,7 @@ class RuntimeDependenciesConfig(BaseModel):
         for dep_key in self.set_deps.keys():
             if dep_key == d:
                 return {d: self.set_deps[dep_key]}
-            if dep_key.startswith(d):
+            if d in dep_key:
                 out[dep_key] = self.set_deps[dep_key]
 
         return out

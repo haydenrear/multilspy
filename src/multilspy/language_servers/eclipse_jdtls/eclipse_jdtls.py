@@ -3,6 +3,7 @@ Provides Java specific instantiation of the LanguageServer class. Contains vario
 """
 
 import asyncio
+from typing import Any, Dict, List, Optional, Tuple, Union
 import dataclasses
 import json
 import logging
@@ -22,6 +23,13 @@ from multilspy.multilspy_config import MultilspyConfig
 from multilspy.multilspy_settings import MultilspySettings
 from multilspy.multilspy_utils import FileUtils
 from multilspy.multilspy_utils import PlatformUtils
+from multilspy.runtime_dependency_config.config_manager import DependencyState
+from multilspy.runtime_dependency_models import (
+    RuntimeDependenciesConfig,
+    InitializeParamsConfig,
+)
+from multilspy.runtime_dependency_config import DependencyConfigManager
+from multilspy.runtime_dependency_downloader import DependencyDownloader
 from pathlib import PurePath
 
 
@@ -45,50 +53,6 @@ class EclipseJDTLS(LanguageServer):
     """
     The EclipseJDTLS class provides a Java specific implementation of the LanguageServer class
     """
-
-    @staticmethod
-    def _resolve_jdk_download_url(
-        runtime_dependencies: dict, jdk_version: str, platform_id: str
-    ) -> str:
-        """
-        Resolve the download URL for a specific JDK version and platform.
-
-        Args:
-            runtime_dependencies: The loaded runtime_dependencies.json
-            jdk_version: The JDK version string (e.g., "17", "21")
-            platform_id: The platform identifier (e.g., "linux-x64", "osx-x64")
-
-        Returns:
-            The download URL for the specified JDK version and platform
-
-        Raises:
-            KeyError: If the version or platform is not available
-        """
-        return runtime_dependencies["jdk_versions"][jdk_version][platform_id]
-
-    @staticmethod
-    def _resolve_gradle_download_url(
-        runtime_dependencies: dict, gradle_version: str
-    ) -> tuple:
-        """
-        Resolve the download URL and metadata for a specific Gradle version.
-
-        Args:
-            runtime_dependencies: The loaded runtime_dependencies.json
-            gradle_version: The Gradle version string (e.g., "7.3.3", "8.5")
-
-        Returns:
-            Tuple of (url, archiveType, relative_extraction_path)
-
-        Raises:
-            KeyError: If the version is not available
-        """
-        gradle_config = runtime_dependencies["gradle_versions"][gradle_version]
-        return (
-            gradle_config["url"],
-            gradle_config["archiveType"],
-            gradle_config["relative_extraction_path"],
-        )
 
     def __init__(
         self,
@@ -209,200 +173,205 @@ class EclipseJDTLS(LanguageServer):
         self, logger: MultilspyLogger, config: MultilspyConfig
     ) -> RuntimeDependencyPaths:
         """
-        Setup runtime dependencies for EclipseJDTLS.
-        """
-        platformId = PlatformUtils.get_platform_id()
+        Setup runtime dependencies for EclipseJDTLS using the modular dependency management system.
 
+        This method:
+        1. Loads runtime_dependencies.json into a Pydantic model
+        2. Creates a DependencyConfigManager to plan which dependencies to download
+        3. Creates a DependencyDownloader to execute the downloads
+        4. Maps downloaded files to RuntimeDependencyPaths
+        """
+        # Get base directory for storing static dependencies
+        base_static_dir = str(
+            PurePath(os.path.abspath(os.path.dirname(__file__)), "static")
+        )
+        os.makedirs(base_static_dir, exist_ok=True)
+
+        # Load runtime dependencies JSON
         with open(
             str(PurePath(os.path.dirname(__file__), "runtime_dependencies.json")), "r"
         ) as f:
-            runtimeDependencies = json.load(f)
-            del runtimeDependencies["_description"]
+            runtime_deps_data = json.load(f)
 
-        os.makedirs(
-            str(PurePath(os.path.abspath(os.path.dirname(__file__)), "static")),
-            exist_ok=True,
+        # Parse into Pydantic model
+        runtime_deps_config = RuntimeDependenciesConfig(**runtime_deps_data)
+
+        # Create configuration manager
+        config_manager = DependencyConfigManager(
+            runtime_deps_config=runtime_deps_config,
+            multilspy_config=config,
+            base_download_path=base_static_dir,
         )
 
-        # assert platformId.value in [
-        #     "linux-x64",
-        #     "win-x64",
-        # ], "Only linux-x64 platform is supported for in multilspy at the moment"
+        # Create download plans
+        config_manager.create_download_plan()
 
-        # Determine Gradle version to use (from config or default)
-        gradle_version = config.gradle_version if config.gradle_version else "7.3.3"
-        gradle_dir_name = f"gradle-{gradle_version}"
-        gradle_path = str(
+        # Create downloader and execute downloads
+        downloader = DependencyDownloader(config_manager, logger)
+        success = downloader.download_all_pending()
+
+        if not success:
+            logger.log(
+                "Some runtime dependencies failed to download. Check logs for details.",
+                logging.ERROR,
+            )
+
+        # Get download summary
+        summary = downloader.get_download_summary()
+        logger.log(
+            f"Download summary: {summary['completed']} completed, "
+            f"{summary['failed']} failed, {summary['pending']} pending",
+            logging.INFO,
+        )
+
+        # Extract paths from downloaded dependencies
+        return self._extract_dependency_paths(
+            base_static_dir,
+            runtime_deps_config,
+            config_manager,
+            logger,
+        )
+
+    def _extract_dependency_paths(
+        self,
+        base_dir: str,
+        runtime_deps_config: RuntimeDependenciesConfig,
+        config_manager: DependencyConfigManager,
+        logger: MultilspyLogger,
+    ) -> RuntimeDependencyPaths:
+        """
+        Extract the paths to required dependencies from the downloaded files.
+
+        Args:
+            base_dir: Base directory where dependencies are stored
+            runtime_deps_config: The loaded runtime dependencies configuration
+            config_manager: The configuration manager with download states
+            logger: Logger for messages
+
+        Returns:
+            RuntimeDependencyPaths with all required paths
+        """
+        platform_id = PlatformUtils.get_platform_id()
+
+        # Helper function to get extra field from RuntimeDependency
+        def get_extra_field(dep_dict: dict, field_name: str, default: str = "") -> str:
+            """Extract extra field from Pydantic model dict."""
+            # First try direct access (for Pydantic extra fields)
+            if field_name in dep_dict:
+                return str(dep_dict[field_name])
+            return default
+
+        # Extract vscode-java paths
+        vscode_java_state = self._get_dependency_state(config_manager, "vscode-java")
+
+        if not vscode_java_state or not vscode_java_state.is_downloaded():
+            raise RuntimeError("vscode-java dependency was not downloaded successfully")
+
+        vscode_java_path = vscode_java_state.downloaded_path
+
+        # Extract gradle paths
+        gradle_version = self.config.gradle_version or "7.3.3"
+        gradle_state = self._get_dependency_state(config_manager, f"gradle_versions.{gradle_version}")
+
+        if not gradle_state or not gradle_state.is_downloaded():
+            raise RuntimeError(
+                f"Gradle {gradle_version} was not downloaded successfully"
+            )
+
+        gradle_path = gradle_state.downloaded_path
+
+        # Get vscode-java metadata for relative paths
+        # Navigate through the dependencies structure: dependencies.vscode-java[platform_id]
+        vscode_java_dict = runtime_deps_config.__dict__.get("dependencies", {})
+        if isinstance(vscode_java_dict, dict):
+            vscode_java_dict = vscode_java_dict.get("vscode-java", {})
+            if isinstance(vscode_java_dict, dict):
+                vscode_java_meta_dict = vscode_java_dict.get(platform_id.value, {})
+            else:
+                vscode_java_meta_dict = {}
+        else:
+            vscode_java_meta_dict = {}
+
+        if not vscode_java_meta_dict:
+            raise RuntimeError(
+                f"No metadata found for vscode-java on platform {platform_id.value}"
+            )
+
+        # Extract relative paths from metadata
+        jre_home_path = str(
             PurePath(
-                os.path.abspath(os.path.dirname(__file__)),
-                f"static/{gradle_dir_name}",
+                vscode_java_path,
+                get_extra_field(vscode_java_meta_dict, "jre_home_path"),
             )
         )
-
-        if not os.path.exists(gradle_path):
-            try:
-                gradle_url, gradle_archive_type, gradle_extraction_path = (
-                    self._resolve_gradle_download_url(
-                        runtimeDependencies, gradle_version
-                    )
-                )
-                FileUtils.download_and_extract_archive(
-                    logger,
-                    gradle_url,
-                    str(PurePath(gradle_path).parent),
-                    gradle_archive_type,
-                )
-                logger.log(
-                    f"Downloaded and extracted Gradle {gradle_version}", logging.INFO
-                )
-            except KeyError:
-                raise ValueError(
-                    f"Gradle version {gradle_version} not available. "
-                    f"Available versions: {', '.join(runtimeDependencies['gradle_versions'].keys())}"
-                )
-
-        assert os.path.exists(gradle_path), f"Gradle path does not exist: {gradle_path}"
-
-        dependency = runtimeDependencies["vscode-java"][platformId.value]
-        vscode_java_path = str(
+        jre_path = str(
             PurePath(
-                os.path.abspath(os.path.dirname(__file__)),
-                "static",
-                dependency["relative_extraction_path"],
+                vscode_java_path, get_extra_field(vscode_java_meta_dict, "jre_path")
             )
         )
-        os.makedirs(vscode_java_path, exist_ok=True)
-        jre_home_path = str(PurePath(vscode_java_path, dependency["jre_home_path"]))
-        jre_path = str(PurePath(vscode_java_path, dependency["jre_path"]))
-        lombok_jar_path = str(PurePath(vscode_java_path, dependency["lombok_jar_path"]))
+        lombok_jar_path = str(
+            PurePath(
+                vscode_java_path,
+                get_extra_field(vscode_java_meta_dict, "lombok_jar_path"),
+            )
+        )
         jdtls_launcher_jar_path = str(
-            PurePath(vscode_java_path, dependency["jdtls_launcher_jar_path"])
+            PurePath(
+                vscode_java_path,
+                get_extra_field(vscode_java_meta_dict, "jdtls_launcher_jar_path"),
+            )
         )
         jdtls_readonly_config_path = str(
-            PurePath(vscode_java_path, dependency["jdtls_readonly_config_path"])
-        )
-        if not all(
-            [
-                os.path.exists(vscode_java_path),
-                os.path.exists(jre_home_path),
-                os.path.exists(jre_path),
-                os.path.exists(lombok_jar_path),
-                os.path.exists(jdtls_launcher_jar_path),
-                os.path.exists(jdtls_readonly_config_path),
-            ]
-        ):
-            FileUtils.download_and_extract_archive(
-                logger, dependency["url"], vscode_java_path, dependency["archiveType"]
-            )
-
-        os.chmod(jre_path, stat.S_IEXEC)
-
-        assert os.path.exists(vscode_java_path)
-        assert os.path.exists(jre_home_path)
-        assert os.path.exists(jre_path)
-        assert os.path.exists(lombok_jar_path)
-        assert os.path.exists(jdtls_launcher_jar_path)
-        assert os.path.exists(jdtls_readonly_config_path)
-
-        # Handle JDK version override if specified
-        if config.java_version:
-            jdk_version_dir = f"jdk-{config.java_version}"
-            override_jdk_base_path = str(
-                PurePath(
-                    os.path.abspath(os.path.dirname(__file__)),
-                    f"static/{jdk_version_dir}",
-                )
-            )
-
-            if not os.path.exists(override_jdk_base_path):
-                os.makedirs(override_jdk_base_path, exist_ok=True)
-                try:
-                    jdk_config = runtimeDependencies["jdk_versions"][
-                        config.java_version
-                    ][platformId.value]
-                    if isinstance(jdk_config, str):
-                        # Old format (just URL string) - not supported anymore
-                        raise ValueError(
-                            f"JDK configuration format invalid. Expected object with url, archiveType, jre_home_path, jre_path"
-                        )
-
-                    jdk_url = jdk_config["url"]
-                    jdk_archive_type = jdk_config["archiveType"]
-
-                    FileUtils.download_and_extract_archive(
-                        logger,
-                        jdk_url,
-                        override_jdk_base_path,
-                        jdk_archive_type,
-                    )
-                    logger.log(
-                        f"Downloaded and extracted JDK {config.java_version} for {platformId.value}",
-                        logging.INFO,
-                    )
-                except KeyError as e:
-                    raise ValueError(
-                        f"JDK version {config.java_version} not available for platform {platformId.value}. "
-                        f"Available versions: {', '.join(runtimeDependencies['jdk_versions'].keys())}"
-                    )
-
-            # Update paths to use the custom JDK using platform-specific paths from config
-            try:
-                jdk_config = runtimeDependencies["jdk_versions"][config.java_version][
-                    platformId.value
-                ]
-                jdk_relative_home = jdk_config["jre_home_path"]
-                jdk_relative_path = jdk_config["jre_path"]
-
-                jre_home_path = str(PurePath(override_jdk_base_path, jdk_relative_home))
-                jre_path = str(PurePath(override_jdk_base_path, jdk_relative_path))
-
-                # Ensure jre_path has execute permissions
-                if os.path.exists(jre_path):
-                    os.chmod(jre_path, stat.S_IEXEC)
-
-                logger.log(
-                    f"Using custom JDK {config.java_version} at {jre_home_path}",
-                    logging.INFO,
-                )
-            except (KeyError, OSError) as e:
-                raise ValueError(
-                    f"Failed to configure custom JDK {config.java_version}: {str(e)}"
-                )
-
-        dependency = runtimeDependencies["intellicode"]["platform-agnostic"]
-        intellicode_directory_path = str(
             PurePath(
-                os.path.abspath(os.path.dirname(__file__)),
-                "static",
-                dependency["relative_extraction_path"],
+                vscode_java_path,
+                get_extra_field(vscode_java_meta_dict, "jdtls_readonly_config_path"),
             )
         )
-        os.makedirs(intellicode_directory_path, exist_ok=True)
+
+        # Handle custom JDK if specified
+        if self.config.java_version:
+            jdk_state = self._get_dependency_state(config_manager, f"jdk_versions.{self.config.java_version}.{platform_id.value}")
+
+            if jdk_state and jdk_state.is_downloaded():
+                jdk_path = jdk_state.downloaded_path
+
+                jdk_meta_dict = runtime_deps_config.get_dependency(jdk_state.dependency_key)
+
+                if jdk_meta_dict:
+                    jre_home_path = str(
+                        PurePath(
+                            jdk_path, get_extra_field(jdk_meta_dict, "jre_home_path")))
+                    jre_path = str(
+                        PurePath(jdk_path, get_extra_field(jdk_meta_dict, "jre_path")))
+
+        intellicode_state = self._get_dependency_state(config_manager, "intellicode")
+
+        if not intellicode_state or not intellicode_state.is_downloaded():
+            raise RuntimeError("Intellicode dependency was not downloaded successfully")
+
+        intellicode_path = intellicode_state.downloaded_path
+        intellicode_meta_dict = runtime_deps_config.get_dependency(intellicode_state.dependency_key)
+
+        if not intellicode_meta_dict:
+            raise RuntimeError("No metadata found for intellicode")
+
         intellicode_jar_path = str(
-            PurePath(intellicode_directory_path, dependency["intellicode_jar_path"])
-        )
+            PurePath(
+                intellicode_path,
+                get_extra_field(intellicode_meta_dict, "intellicode_jar_path"),))
         intellisense_members_path = str(
             PurePath(
-                intellicode_directory_path, dependency["intellisense_members_path"]
-            )
-        )
-        if not all(
-            [
-                os.path.exists(intellicode_directory_path),
-                os.path.exists(intellicode_jar_path),
-                os.path.exists(intellisense_members_path),
-            ]
-        ):
-            FileUtils.download_and_extract_archive(
-                logger,
-                dependency["url"],
-                intellicode_directory_path,
-                dependency["archiveType"],
-            )
+                intellicode_path,
+                get_extra_field(intellicode_meta_dict, "intellisense_members_path"),))
 
-        assert os.path.exists(intellicode_directory_path)
-        assert os.path.exists(intellicode_jar_path)
-        assert os.path.exists(intellisense_members_path)
+        # Make jre_path executable
+        if os.path.exists(jre_path):
+            os.chmod(jre_path, stat.S_IEXEC)
+
+        logger.log(
+            f"Runtime dependencies resolved: JRE at {jre_home_path}",
+            logging.INFO,
+        )
 
         return RuntimeDependencyPaths(
             gradle_path=gradle_path,
@@ -415,92 +384,150 @@ class EclipseJDTLS(LanguageServer):
             intellisense_members_path=intellisense_members_path,
         )
 
+    @staticmethod
+    def _get_dependency_state(config_manager: DependencyConfigManager, name: str) -> DependencyState:
+        # Extract intellicode paths
+        intellicode_deps = config_manager.get_dependency(name)
+        intellicode_state = None
+        for key, state in intellicode_deps.items():
+            if name in key:
+                intellicode_state = state
+                break
+        return intellicode_state
+
     def _get_initialize_params(self, repository_absolute_path: str) -> InitializeParams:
         """
         Returns the initialize parameters for the EclipseJDTLS server.
+
+        Uses the InitializeParamsConfig Pydantic model to load and validate the JSON,
+        then substitutes dynamic values (repository path, JDK path, gradle path, etc.)
+        and returns the initialized parameters as a dictionary.
         """
         # Look into https://github.com/eclipse/eclipse.jdt.ls/blob/master/org.eclipse.jdt.ls.core/src/org/eclipse/jdt/ls/core/internal/preferences/Preferences.java to understand all the options available
         with open(
             str(PurePath(os.path.dirname(__file__), "initialize_params.json")), "r"
         ) as f:
-            d: InitializeParams = json.load(f)
+            init_params_data = json.load(f)
 
-        del d["_description"]
+        # Parse into Pydantic model for validation
+        init_params_config = InitializeParamsConfig(**init_params_data)
 
         if not os.path.isabs(repository_absolute_path):
             repository_absolute_path = os.path.abspath(repository_absolute_path)
 
-        assert d["processId"] == "os.getpid()"
-        d["processId"] = os.getpid()
+        # Substitute dynamic top-level values
+        init_params_config.process_id = os.getpid()
+        init_params_config.root_path = repository_absolute_path
+        init_params_config.root_uri = pathlib.Path(repository_absolute_path).as_uri()
 
-        assert d["rootPath"] == "repository_absolute_path"
-        d["rootPath"] = repository_absolute_path
+        # Update workspace folders
+        workspace_uri = pathlib.Path(repository_absolute_path).as_uri()
+        workspace_name = os.path.basename(repository_absolute_path)
 
-        assert d["rootUri"] == "pathlib.Path(repository_absolute_path).as_uri()"
-        d["rootUri"] = pathlib.Path(repository_absolute_path).as_uri()
-
-        assert (
-            d["initializationOptions"]["workspaceFolders"]
-            == "[pathlib.Path(repository_absolute_path).as_uri()]"
+        init_params_config.set_initialization_option(
+            [workspace_uri], "workspaceFolders"
         )
-        d["initializationOptions"]["workspaceFolders"] = [
-            pathlib.Path(repository_absolute_path).as_uri()
-        ]
-
-        assert (
-            d["workspaceFolders"]
-            == '[\n            {\n                "uri": pathlib.Path(repository_absolute_path).as_uri(),\n                "name": os.path.basename(repository_absolute_path),\n            }\n        ]'
-        )
-        d["workspaceFolders"] = [
+        init_params_config.workspace_folders = [
             {
-                "uri": pathlib.Path(repository_absolute_path).as_uri(),
-                "name": os.path.basename(repository_absolute_path),
+                "uri": workspace_uri,
+                "name": workspace_name,
             }
         ]
 
-        assert d["initializationOptions"]["bundles"] == ["intellicode-core.jar"]
-        bundles = [self.runtime_dependency_paths.intellicode_jar_path]
-        d["initializationOptions"]["bundles"] = bundles
-
-        assert d["initializationOptions"]["settings"]["java"]["configuration"][
-            "runtimes"
-        ] == [
-            {
-                "name": "JavaSE-17",
-                "path": "static/vscode-java/extension/jre/17.0.8.1-linux-x86_64",
-                "default": True,
-            }
-        ]
-        d["initializationOptions"]["settings"]["java"]["configuration"]["runtimes"] = [
-            {
-                "name": "JavaSE-17",
-                "path": self.runtime_dependency_paths.jre_home_path,
-                "default": True,
-            }
-        ]
-
-        for runtime in d["initializationOptions"]["settings"]["java"]["configuration"][
-            "runtimes"
-        ]:
-            assert "name" in runtime
-            assert "path" in runtime
-            assert os.path.exists(runtime["path"]), (
-                f"Runtime required for eclipse_jdtls at path {runtime['path']} does not exist"
-            )
-
-        assert (
-            d["initializationOptions"]["settings"]["java"]["import"]["gradle"]["home"]
-            == "abs(static/gradle-7.3.3)"
-        )
-        d["initializationOptions"]["settings"]["java"]["import"]["gradle"]["home"] = (
-            self.runtime_dependency_paths.gradle_path
+        # Update bundles with actual intellicode jar path
+        init_params_config.set_initialization_option(
+            [self.runtime_dependency_paths.intellicode_jar_path], "bundles"
         )
 
-        d["initializationOptions"]["settings"]["java"]["import"]["gradle"]["java"][
-            "home"
-        ] = self.runtime_dependency_paths.jre_path
+        # Update runtime configuration
+        init_params_config.set_initialization_option(
+            [
+                {
+                    "name": "JavaSE-17",
+                    "path": self.runtime_dependency_paths.jre_home_path,
+                    "default": True,
+                }
+            ],
+            "settings",
+            "java",
+            "configuration",
+            "runtimes",
+        )
 
-        return d
+        # Verify all runtime paths exist
+        runtimes = init_params_config.get_initialization_option(
+            "settings", "java", "configuration", "runtimes"
+        )
+        if runtimes:
+            for runtime in runtimes:
+                assert "name" in runtime, "Runtime missing 'name' field"
+                assert "path" in runtime, "Runtime missing 'path' field"
+                assert os.path.exists(runtime["path"]), (
+                    f"Runtime required for eclipse_jdtls at path {runtime['path']} does not exist"
+                )
+
+        # Update gradle configuration
+        init_params_config.set_initialization_option(
+            self.runtime_dependency_paths.gradle_path,
+            "settings",
+            "java",
+            "import",
+            "gradle",
+            "home",
+        )
+        init_params_config.set_initialization_option(
+            self.runtime_dependency_paths.jre_path,
+            "settings",
+            "java",
+            "import",
+            "gradle",
+            "java",
+            "home",
+        )
+
+        # Convert to dict for LSP communication
+        return init_params_config.to_lsp_dict()
+
+    def _get_nested_value(
+        self, d: Dict[str, Any], keys: List[str], default: Any = None
+    ) -> Any:
+        """
+        Get a nested value from a dictionary using a path of keys.
+
+        Args:
+            d: Dictionary to search
+            keys: List of keys representing the path
+            default: Default value if path doesn't exist
+
+        Returns:
+            Value at the specified path or default
+        """
+        current = d
+        for key in keys:
+            if isinstance(current, dict) and key in current:
+                current = current[key]
+            else:
+                return default
+        return current
+
+    def _set_nested_value(self, d: Dict[str, Any], keys: List[str], value: Any) -> None:
+        """
+        Set a nested value in a dictionary using a path of keys.
+
+        Creates intermediate dictionaries as needed.
+
+        Args:
+            d: Dictionary to modify
+            keys: List of keys representing the path
+            value: Value to set
+        """
+        current = d
+        for key in keys[:-1]:
+            if key not in current:
+                current[key] = {}
+            current = current[key]
+        if keys:
+            current[keys[-1]] = value
 
     def _apply_version_overrides(self, initialize_params: InitializeParams) -> None:
         """
@@ -510,13 +537,20 @@ class EclipseJDTLS(LanguageServer):
         if they were specified in the configuration and downloaded/resolved during setup.
 
         Args:
-            initialize_params: The initialize parameters to modify in-place
+            initialize_params: The initialize parameters dictionary to modify in-place
         """
         # Override Java version if specified
         if self.config.java_version:
-            runtimes = initialize_params["initializationOptions"]["settings"]["java"][
-                "configuration"
-            ]["runtimes"]
+            runtimes = self._get_nested_value(
+                initialize_params,
+                [
+                    "initializationOptions",
+                    "settings",
+                    "java",
+                    "configuration",
+                    "runtimes",
+                ],
+            )
             if runtimes:
                 runtime = runtimes[0]
                 # Update the runtime name (e.g., "JavaSE-17" -> "JavaSE-21")
@@ -530,14 +564,33 @@ class EclipseJDTLS(LanguageServer):
 
         # Override Gradle version if specified
         if self.config.gradle_version:
-            gradle_config = initialize_params["initializationOptions"]["settings"][
-                "import"
-            ]["gradle"]
-            gradle_config["home"] = self.runtime_dependency_paths.gradle_path
-            # Also update the Java home for gradle
-            gradle_config["java"]["home"] = self.runtime_dependency_paths.jre_path
+            self._set_nested_value(
+                initialize_params,
+                [
+                    "initializationOptions",
+                    "settings",
+                    "java",
+                    "import",
+                    "gradle",
+                    "home",
+                ],
+                self.runtime_dependency_paths.gradle_path,
+            )
+            self._set_nested_value(
+                initialize_params,
+                [
+                    "initializationOptions",
+                    "settings",
+                    "java",
+                    "import",
+                    "gradle",
+                    "java",
+                    "home",
+                ],
+                self.runtime_dependency_paths.jre_path,
+            )
             self.logger.log(
-                f"Applied gradle_version override: {self.config.gradle_version} at {gradle_config['home']}",
+                f"Applied gradle_version override: {self.config.gradle_version} at {self.runtime_dependency_paths.gradle_path}",
                 logging.INFO,
             )
 
